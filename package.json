@@ -18,13 +18,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "keywords": [
-    "opencv",
-    "express",
-    "tesseract",
-    "render",
-    "image-detection"
-  ],
-  "license": "MIT"
+  }
 }
