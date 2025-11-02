@@ -1,20 +1,17 @@
 {
-  "name": "smart-ui-analyzer",
+  "name": "boss-detector",
   "version": "1.0.0",
-  "description": "Game UI OCR Analyzer - Smart Slot and Combat Power Detector",
+  "description": "Smart detection for equipped slots, inventory, and combat power.",
   "main": "server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "@u4/opencv4nodejs": "^6.4.0",
     "express": "^4.19.2",
     "multer": "^1.4.5-lts.1",
-    "tesseract.js": "^5.0.3",
-    "opencv4nodejs": "^5.6.0",
-    "jimp": "^0.22.12"
-  },
-  "engines": {
-    "node": ">=18.x"
+    "fs-extra": "^11.1.1",
+    "cors": "^2.8.5"
   }
 }
