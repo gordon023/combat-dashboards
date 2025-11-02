@@ -1,114 +1,152 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Game Screenshot Detector</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Game UI Detector</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <script src="/socket.io/socket.io.js"></script>
+  <style>
+    .detection-wrap { display: flex; gap: 16px; align-items: flex-start; }
+    .labels { display:flex; flex-direction:column; gap:12px; min-width:200px; }
+    .label-item { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-radius:8px; background:#111827; border:1px solid #2d3748; }
+    .check { color: #34d399; font-weight:700; }
+    .cross { color: #f87171; font-weight:700; }
+    .combat-val { color:#fef3c7; font-weight:700; }
+    .img-box { position: relative; display:inline-block; }
+    .overlay-canvas { position:absolute; top:0; left:0; pointer-events:none; }
+  </style>
 </head>
+<body class="bg-gray-900 text-white min-h-screen p-6 flex flex-col items-center">
+  <h1 class="text-2xl font-bold mb-4">🎮 Game UI Detector</h1>
 
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-6">
-  <h1 class="text-3xl font-bold mb-6">🎮 Game Screenshot Detector</h1>
-
-  <!-- Upload Form -->
-  <form id="uploadForm" enctype="multipart/form-data" class="flex flex-col md:flex-row items-center gap-3">
+  <form id="uploadForm" class="mb-6 flex gap-2">
     <input type="file" name="image" id="image" accept="image/*" class="bg-gray-800 p-2 rounded">
-    <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white">Upload</button>
+    <button class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Upload</button>
   </form>
 
-  <p id="status" class="mt-3 text-sm text-green-400"></p>
+  <div id="status" class="mb-4 text-sm text-green-400"></div>
 
-  <!-- Table -->
-  <div class="mt-8 w-full max-w-4xl">
-    <table class="min-w-full bg-gray-800 rounded-lg overflow-hidden">
-      <thead>
-        <tr class="bg-gray-700 text-left">
-          <th class="py-3 px-4">Image</th>
-          <th class="py-3 px-4">Detected Elements</th>
-          <th class="py-3 px-4">Timestamp</th>
-        </tr>
-      </thead>
-      <tbody id="detectionTable"></tbody>
-    </table>
-  </div>
+  <div id="resultsList" class="w-full max-w-5xl space-y-6"></div>
 
-  <script>
-    const socket = io();
-    const form = document.getElementById("uploadForm");
-    const status = document.getElementById("status");
-    const table = document.getElementById("detectionTable");
+<script>
+  const socket = io();
+  const uploadForm = document.getElementById('uploadForm');
+  const status = document.getElementById('status');
+  const resultsList = document.getElementById('resultsList');
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const formData = new FormData(form);
-      status.textContent = "Uploading...";
-
-      try {
-        const res = await fetch("/upload", { method: "POST", body: formData });
-        const data = await res.json();
-
-        if (data.success && data.detection) {
-          addDetectionRow(data.detection);
-          status.textContent = "✅ Uploaded successfully!";
-        } else status.textContent = "❌ Upload failed.";
-      } catch (err) {
-        console.error(err);
-        status.textContent = "❌ Upload failed.";
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(uploadForm);
+    status.textContent = 'Uploading...';
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.success && json.detection) {
+        status.textContent = 'Uploaded';
+        addResult(json.detection);
+      } else {
+        status.textContent = 'Upload failed';
       }
+    } catch (err) {
+      console.error(err);
+      status.textContent = 'Upload failed';
+    }
+  });
+
+  function createLabelRow(title, isVisible, extraText) {
+    const el = document.createElement('div');
+    el.className = 'label-item';
+    el.innerHTML = `<div>${title}</div><div>${isVisible ? `<span class="check">✔</span>` : `<span class="cross">✖</span>`}${extraText ? '&nbsp;&nbsp;<span class="combat-val">'+extraText+'</span>' : ''}</div>`;
+    return el;
+  }
+
+  function addResult(det) {
+    // container
+    const wrap = document.createElement('div');
+    wrap.className = 'detection-wrap bg-gray-800 p-4 rounded-lg border border-gray-700';
+
+    // left: image with overlay canvas
+    const imgCol = document.createElement('div');
+    imgCol.className = 'img-col';
+
+    const imgBox = document.createElement('div');
+    imgBox.className = 'img-box';
+
+    const img = document.createElement('img');
+    img.src = det.path;
+    img.style.maxWidth = '900px';
+    img.style.maxHeight = '600px';
+    img.style.borderRadius = '8px';
+    img.style.display = 'block';
+    imgBox.appendChild(img);
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'overlay-canvas';
+    imgBox.appendChild(canvas);
+    imgCol.appendChild(imgBox);
+
+    // right: vertical labels (equipped, inventory, combat power)
+    const labelCol = document.createElement('div');
+    labelCol.className = 'labels';
+
+    const equippedRow = createLabelRow('Equipped Slots', det.equippedVisible);
+    const inventoryRow = createLabelRow('Inventory Panel', det.inventoryVisible);
+    const combatText = det.combatPower ? det.combatPower : '—';
+    const combatRow = createLabelRow('Combat Power', !!det.combatPower, det.combatPower ? det.combatPower : '');
+
+    labelCol.appendChild(equippedRow);
+    labelCol.appendChild(inventoryRow);
+    labelCol.appendChild(combatRow);
+
+    wrap.appendChild(imgCol);
+    wrap.appendChild(labelCol);
+
+    resultsList.prepend(wrap);
+
+    // draw boxes when image loads
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      canvas.style.width = img.width + 'px';
+      canvas.style.height = img.height + 'px';
+
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // boxes: inventory, equipped, combatPower
+      const boxes = det.boxes || {};
+      // draw a green rectangle for each box with labels
+      function drawBox(b, label) {
+        if (!b) return;
+        // boxes are in pixel coords already
+        ctx.strokeStyle = 'lime';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = 'rgba(0,255,0,0.15)';
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, b.x + 6, b.y + 18);
+      }
+
+      drawBox(boxes.inventory, 'Inventory');
+      drawBox(boxes.equipped, 'Equipped');
+      drawBox(boxes.combatPower, 'Combat Power');
+    };
+  }
+
+  // load existing detections
+  fetch('/detections')
+    .then(r => r.json())
+    .then(list => {
+      list.forEach(addResult);
     });
 
-    // Draw table row
-    function addDetectionRow(det) {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td class="py-2 px-4 relative">
-          <div class="relative inline-block">
-            <img src="${det.path}" class="w-64 h-64 object-cover rounded-lg border border-gray-700">
-            <canvas class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
-          </div>
-        </td>
-        <td class="py-2 px-4">
-          <ul class="list-disc list-inside text-green-300">
-            ${det.detected.map(d => `<li>${d}</li>`).join("")}
-          </ul>
-        </td>
-        <td class="py-2 px-4">${new Date(det.timestamp).toLocaleString()}</td>
-      `;
-      table.prepend(row);
-
-      // draw highlight boxes
-      const canvas = row.querySelector("canvas");
-      const ctx = canvas.getContext("2d");
-      const img = row.querySelector("img");
-
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-
-        const scaleX = canvas.width / img.naturalWidth;
-        const scaleY = canvas.height / img.naturalHeight;
-
-        det.boxes.forEach(b => {
-          ctx.strokeStyle = "lime";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(b.x * scaleX, b.y * scaleY, b.w * scaleX, b.h * scaleY);
-          ctx.fillStyle = "rgba(0,255,0,0.3)";
-          ctx.fillRect(b.x * scaleX, b.y * scaleY, b.w * scaleX, b.h * scaleY);
-          ctx.fillStyle = "#fff";
-          ctx.font = "12px sans-serif";
-          ctx.fillText(b.label, b.x * scaleX + 4, b.y * scaleY + 14);
-        });
-      };
-    }
-
-    // Load existing detections
-    fetch("/detections")
-      .then(res => res.json())
-      .then(data => data.forEach(addDetectionRow));
-
-    // Realtime updates
-    socket.on("newDetection", det => addDetectionRow(det));
-  </script>
+  // realtime updates
+  socket.on('new_detection', (det) => {
+    addResult(det);
+  });
+</script>
 </body>
 </html>
