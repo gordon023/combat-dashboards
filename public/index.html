@@ -35,34 +35,41 @@
   </div>
 
   <script>
-    const socket = io();
-    const form = document.getElementById('uploadForm');
-    const status = document.getElementById('status');
-    const detectionTable = document.getElementById('detectionTable');
+const socket = io();
+const form = document.getElementById('uploadForm');
+const status = document.getElementById('status');
+const detectionTable = document.getElementById('detectionTable');
 
-    // When form is submitted
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(form);
-      status.textContent = 'Uploading...';
+// ✅ Upload handler
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(form);
+  status.textContent = 'Uploading...';
 
-      const res = await fetch('/upload', { method: 'POST', body: formData });
-      const data = await res.json();
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await res.json();
 
-      if (data.success) {
-        status.textContent = '✅ Uploaded successfully!';
-      } else {
-        status.textContent = '❌ Upload failed.';
-      }
-    });
+    if (data.success && data.detection) {
+      status.textContent = '✅ Uploaded successfully!';
+      addDetectionRow(data.detection); // ✅ add immediately
+    } else {
+      status.textContent = '❌ Upload failed.';
+    }
+  } catch (err) {
+    console.error(err);
+    status.textContent = '❌ Upload failed.';
+  }
+});
 
-    // Render new detection rows
-    function addDetectionRow(det) {
+// ✅ Add detection row visually
+function addDetectionRow(det) {
   const row = document.createElement('tr');
   row.innerHTML = `
     <td class="py-2 px-4 relative">
       <div class="relative inline-block">
-        <img src="${det.path}" alt="screenshot" class="w-64 h-64 object-cover rounded-lg border border-gray-700">
+        <img src="${det.path}" alt="screenshot" 
+             class="w-64 h-64 object-cover rounded-lg border border-gray-700">
         <canvas class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
       </div>
     </td>
@@ -75,10 +82,14 @@
   `;
   detectionTable.prepend(row);
 
+  // ✅ Draw bounding boxes after image loads
   const canvas = row.querySelector("canvas");
   const ctx = canvas.getContext("2d");
   const img = row.querySelector("img");
   img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+
     const scaleX = canvas.width / img.naturalWidth;
     const scaleY = canvas.height / img.naturalHeight;
 
@@ -86,7 +97,7 @@
       ctx.strokeStyle = "lime";
       ctx.lineWidth = 2;
       ctx.strokeRect(b.x * scaleX, b.y * scaleY, b.w * scaleX, b.h * scaleY);
-      ctx.fillStyle = "rgba(0,255,0,0.4)";
+      ctx.fillStyle = "rgba(0,255,0,0.3)";
       ctx.fillRect(b.x * scaleX, b.y * scaleY, b.w * scaleX, b.h * scaleY);
       ctx.fillStyle = "#fff";
       ctx.fillText(b.label, b.x * scaleX + 5, b.y * scaleY + 15);
@@ -94,7 +105,20 @@
   };
 }
 
-  </script>
+// ✅ Load existing detections on page load
+fetch('/detections')
+  .then(res => res.json())
+  .then(data => {
+    data.forEach(addDetectionRow);
+  });
+
+// ✅ Real-time new detections from other clients
+socket.on('newDetection', (det) => {
+  addDetectionRow(det);
+});
+</script>
+
+
 
 </body>
 </html>
