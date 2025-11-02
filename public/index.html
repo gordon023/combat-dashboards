@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Boss Inventory Detector</title>
+  <title>Boss UI Detector</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-white p-6">
-  <div class="max-w-3xl mx-auto">
-    <h1 class="text-3xl font-bold mb-4">🧠 Boss Detector</h1>
+<body class="bg-gray-900 text-white min-h-screen p-6">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4">🎮 Smart UI Detector</h1>
     <form id="uploadForm" class="flex gap-2 mb-6">
       <input type="file" id="image" name="image" accept="image/*" class="text-white" required />
-      <button type="submit" class="bg-blue-600 px-4 py-2 rounded">Upload & Detect</button>
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Upload Screenshot</button>
     </form>
 
     <div id="results" class="space-y-4"></div>
@@ -24,6 +24,8 @@
     form.addEventListener("submit", async e => {
       e.preventDefault();
       const file = document.getElementById("image").files[0];
+      if (!file) return;
+
       const fd = new FormData();
       fd.append("image", file);
 
@@ -33,13 +35,13 @@
       const div = document.createElement("div");
       div.className = "bg-gray-800 p-4 rounded-lg shadow-lg";
       div.innerHTML = `
-        <div class="flex items-center space-x-4">
-          <img src="${data.image}" class="w-1/2 rounded-lg border border-gray-700">
-          <div>
-            <p><b>Equipped Slots:</b> ${data.equippedCount}</p>
-            <p><b>Inventory Slots:</b> ${data.inventoryCount}</p>
-            <p><b>Combat Power:</b> ${data.combatPowerDetected ? "✅ Detected" : "❌ Not found"}</p>
-            <p><small>${new Date(data.timestamp).toLocaleString()}</small></p>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <img src="${data.image}" class="sm:w-1/2 rounded-lg border border-gray-700">
+          <div class="space-y-1 text-sm sm:text-base">
+            <p><b>Equipped Slots:</b> ${data.equippedSlots}</p>
+            <p><b>Inventory Slots:</b> ${data.inventorySlots}</p>
+            <p><b>Combat Power:</b> ${data.combatPower}</p>
+            <p class="text-gray-400 text-xs">${new Date(data.timestamp).toLocaleString()}</p>
           </div>
         </div>
       `;
