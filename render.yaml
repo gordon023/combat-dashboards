@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: realtime-game-ui
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
