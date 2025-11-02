@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: boss-detector
+    name: boss-ui-detector
     env: node
     plan: free
     buildCommand: npm install
