@@ -1,91 +1,66 @@
 import express from "express";
 import multer from "multer";
 import fs from "fs-extra";
-import cors from "cors";
 import path from "path";
-import cv from "@u4/opencv4nodejs";
 import Tesseract from "tesseract.js";
+import cors from "cors";
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
 app.use(express.static("public"));
+app.use("/uploads", express.static("uploads"));
 
-const uploadDir = "./uploads";
-const dataFile = "./data/store.json";
-fs.ensureDirSync(uploadDir);
-fs.ensureDirSync("./data");
-if (!fs.existsSync(dataFile)) fs.writeJsonSync(dataFile, []);
+const upload = multer({ dest: "uploads/" });
+const dataFile = "data/store.json";
 
-// Multer setup for uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
-const upload = multer({ storage });
+// Ensure data folder and JSON exist
+fs.ensureFileSync(dataFile);
+if (!fs.readFileSync(dataFile, "utf8")) fs.writeFileSync(dataFile, "[]");
 
-// Detection function
-async function detectUIElements(filePath) {
-  const image = await cv.imreadAsync(filePath);
+// Detect UI elements (simple OCR-based)
+async function detectUIElements(imagePath) {
+  try {
+    const { data } = await Tesseract.recognize(imagePath, "eng");
+    const text = data.text.toLowerCase();
 
-  // Convert to grayscale
-  const gray = image.bgrToGray();
+    const hasInventory = text.includes("inventory");
+    const hasEquipped = text.includes("equip") || text.includes("equipped");
+    const combatMatch = text.match(/combat\s*power\s*[:\-]?\s*(\d+)/i);
 
-  // Simple feature detection thresholds
-  const inventoryRegion = gray.getRegion(new cv.Rect(950, 100, 350, 500)); // right side
-  const equippedRegion = gray.getRegion(new cv.Rect(450, 400, 400, 200)); // center-bottom
-  const powerRegion = gray.getRegion(new cv.Rect(40, 620, 300, 100)); // lower-left text
-
-  // OCR combat power
-  const ocrResult = await Tesseract.recognize(
-    powerRegion.getData(),
-    "eng",
-    { logger: () => {} }
-  );
-
-  const text = ocrResult.data.text.replace(/\n/g, " ");
-  const hasCombatPower = /combat\s*power/i.test(text);
-  const powerValueMatch = text.match(/\d{4,}/);
-  const combatPower = powerValueMatch ? powerValueMatch[0] : null;
-
-  // Dummy visual presence detection by pixel variance
-  const hasInventory =
-    inventoryRegion.mean().w > 10 && inventoryRegion.stdDev().w > 20;
-  const hasEquipped =
-    equippedRegion.mean().w > 10 && equippedRegion.stdDev().w > 20;
-
-  return {
-    inventory: hasInventory ? "✅" : "❌",
-    equipped: hasEquipped ? "✅" : "❌",
-    combatPower: hasCombatPower ? `⚡ ${combatPower || "Detected"}` : "❌",
-  };
+    return {
+      inventoryVisible: hasInventory,
+      equippedVisible: hasEquipped,
+      combatPower: combatMatch ? combatMatch[1] : "N/A",
+    };
+  } catch (e) {
+    console.error("OCR Error:", e);
+    return { inventoryVisible: false, equippedVisible: false, combatPower: "N/A" };
+  }
 }
 
-// Upload endpoint
-app.post("/upload", upload.single("image"), async (req, res) => {
-  try {
-    const result = await detectUIElements(req.file.path);
-    const record = {
-      file: req.file.filename,
-      ...result,
-    };
+// Upload route
+app.post("/upload", upload.single("screenshot"), async (req, res) => {
+  const filePath = req.file.path;
+  const result = await detectUIElements(filePath);
 
-    const data = await fs.readJson(dataFile);
-    data.unshift(record);
-    await fs.writeJson(dataFile, data);
+  const entry = {
+    id: Date.now(),
+    image: `/uploads/${req.file.filename}`,
+    ...result,
+  };
 
-    res.json(record);
-  } catch (err) {
-    console.error("Detection error:", err);
-    res.status(500).json({ error: "Detection failed" });
-  }
+  const existing = JSON.parse(fs.readFileSync(dataFile, "utf8"));
+  existing.unshift(entry);
+  fs.writeFileSync(dataFile, JSON.stringify(existing, null, 2));
+
+  res.json(entry);
 });
 
 // Fetch table data
-app.get("/data", async (req, res) => {
-  const data = await fs.readJson(dataFile);
+app.get("/data", (req, res) => {
+  const data = JSON.parse(fs.readFileSync(dataFile, "utf8"));
   res.json(data);
 });
 
