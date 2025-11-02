@@ -2,92 +2,91 @@ import express from "express";
 import multer from "multer";
 import fs from "fs-extra";
 import cors from "cors";
+import path from "path";
 import cv from "@u4/opencv4nodejs";
 import Tesseract from "tesseract.js";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-const upload = multer({ dest: "uploads/" });
-const dataFile = "./data/detections.json";
+const uploadDir = "./uploads";
+const dataFile = "./data/store.json";
+fs.ensureDirSync(uploadDir);
+fs.ensureDirSync("./data");
+if (!fs.existsSync(dataFile)) fs.writeJsonSync(dataFile, []);
 
-fs.ensureFileSync(dataFile);
-let detections = fs.readJsonSync(dataFile, { throws: false }) || [];
+// Multer setup for uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+});
+const upload = multer({ storage });
 
-// 🔍 Smart detect + OCR
+// Detection function
+async function detectUIElements(filePath) {
+  const image = await cv.imreadAsync(filePath);
+
+  // Convert to grayscale
+  const gray = image.bgrToGray();
+
+  // Simple feature detection thresholds
+  const inventoryRegion = gray.getRegion(new cv.Rect(950, 100, 350, 500)); // right side
+  const equippedRegion = gray.getRegion(new cv.Rect(450, 400, 400, 200)); // center-bottom
+  const powerRegion = gray.getRegion(new cv.Rect(40, 620, 300, 100)); // lower-left text
+
+  // OCR combat power
+  const ocrResult = await Tesseract.recognize(
+    powerRegion.getData(),
+    "eng",
+    { logger: () => {} }
+  );
+
+  const text = ocrResult.data.text.replace(/\n/g, " ");
+  const hasCombatPower = /combat\s*power/i.test(text);
+  const powerValueMatch = text.match(/\d{4,}/);
+  const combatPower = powerValueMatch ? powerValueMatch[0] : null;
+
+  // Dummy visual presence detection by pixel variance
+  const hasInventory =
+    inventoryRegion.mean().w > 10 && inventoryRegion.stdDev().w > 20;
+  const hasEquipped =
+    equippedRegion.mean().w > 10 && equippedRegion.stdDev().w > 20;
+
+  return {
+    inventory: hasInventory ? "✅" : "❌",
+    equipped: hasEquipped ? "✅" : "❌",
+    combatPower: hasCombatPower ? `⚡ ${combatPower || "Detected"}` : "❌",
+  };
+}
+
+// Upload endpoint
 app.post("/upload", upload.single("image"), async (req, res) => {
   try {
-    const imgPath = req.file.path;
-    const mat = cv.imread(imgPath);
-    const gray = mat.bgrToGray();
-    const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
-    const edges = blurred.canny(50, 150);
-
-    const contours = edges.findContours(cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    const slots = contours
-      .map(c => c.boundingRect())
-      .filter(r => r.width > 20 && r.height > 20);
-
-    const height = mat.rows;
-    const width = mat.cols;
-
-    // Regions
-    const equipped = slots.filter(r => r.y < height * 0.4);
-    const inventory = slots.filter(r => r.y >= height * 0.4 && r.y < height * 0.8);
-    const combatRect = new cv.Rect(width * 0.7, height * 0.8, width * 0.25, height * 0.15);
-
-    const output = mat.copy();
-    equipped.forEach(r => output.drawRectangle(r, new cv.Vec(0, 255, 0), 2));
-    inventory.forEach(r => output.drawRectangle(r, new cv.Vec(255, 255, 0), 2));
-    output.drawRectangle(combatRect, new cv.Vec(255, 0, 0), 2);
-
-    const combatCrop = mat.getRegion(combatRect);
-    const combatPath = `uploads/crop_${Date.now()}.jpg`;
-    cv.imwrite(combatPath, combatCrop);
-
-    // 🧠 OCR: read text
-    const ocrResult = await Tesseract.recognize(combatPath, "eng", {
-      logger: m => console.log(m.status),
-    });
-
-    let combatText = ocrResult.data.text
-      .replace(/\n/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    let combatDetected = "";
-    const match = combatText.match(/combat\s*power\s*\d+/i);
-    if (match) combatDetected = match[0];
-    else if (combatText.length > 0) combatDetected = combatText;
-
-    const outputPath = `public/output_${Date.now()}.jpg`;
-    cv.imwrite(outputPath, output);
-
-    const result = {
-      id: Date.now(),
-      image: outputPath.replace("public/", ""),
-      equippedSlots: equipped.length,
-      inventorySlots: inventory.length,
-      combatPower: combatDetected || "Not detected",
-      timestamp: new Date().toISOString(),
+    const result = await detectUIElements(req.file.path);
+    const record = {
+      file: req.file.filename,
+      ...result,
     };
 
-    detections.push(result);
-    await fs.writeJson(dataFile, detections);
+    const data = await fs.readJson(dataFile);
+    data.unshift(record);
+    await fs.writeJson(dataFile, data);
 
-    res.json(result);
+    res.json(record);
   } catch (err) {
-    console.error("Detection failed:", err);
-    res.status(500).json({ error: "Detection failed", details: err.message });
+    console.error("Detection error:", err);
+    res.status(500).json({ error: "Detection failed" });
   }
 });
 
-app.get("/detections", (req, res) => {
-  res.json(detections);
+// Fetch table data
+app.get("/data", async (req, res) => {
+  const data = await fs.readJson(dataFile);
+  res.json(data);
 });
 
-app.listen(PORT, () => console.log(`✅ Boss Detector running on port ${PORT}`));
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
