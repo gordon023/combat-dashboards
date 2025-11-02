@@ -1,201 +1,94 @@
-// server.js
 import express from "express";
+import http from "http";
+import { Server } from "socket.io";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
-import { createServer } from "http";
-import { Server } from "socket.io";
-import Jimp from "jimp";
 import Tesseract from "tesseract.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import Jimp from "jimp";
 
 const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer);
-
+const server = http.createServer(app);
+const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 
-const uploadDir = path.join(__dirname, "public", "uploads");
-const dataFile = path.join(__dirname, "detections.json");
+const upload = multer({ dest: "uploads/" });
+const DATA_FILE = "./data/detections.json";
 
-// ensure folders & files exist
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, "[]");
+if (!fs.existsSync("./data")) fs.mkdirSync("./data");
+if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 
-app.use(express.static(path.join(__dirname, "public")));
-app.use(express.json());
+app.use(express.static("public"));
+app.use("/uploads", express.static("uploads"));
 
-// multer config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, `${unique}${path.extname(file.originalname) || ".png"}`);
-  }
-});
-const upload = multer({ storage });
+// Load detections
+let detections = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
 
-// ---------------------------
-// Normalized bounding boxes
-// (x, y, w, h) are fractions of image width/height
-// These were chosen to match your green guide zones.
-// You can tune them if your screenshots slightly differ.
-// ---------------------------
-const BOXES = {
-  // inventory panel on the right (large vertical)
-  inventory: { x: 0.72, y: 0.06, w: 0.26, h: 0.88 },
-
-  // equipped items area center-bottom (around action bar / equipped icons)
-  equipped: { x: 0.28, y: 0.44, w: 0.44, h: 0.34 },
-
-  // combat power bottom-left (small HUD block)
-  combatPower: { x: 0.02, y: 0.78, w: 0.28, h: 0.18 }
+// Save persistently
+const saveData = () => {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(detections, null, 2));
 };
 
-// Helper: measure "visualness" of a cropped Jimp image
-async function regionHasContent(jimpImage) {
-  // Convert to greyscale then compute pixel variance (higher => not blank)
-  const clone = jimpImage.clone().greyscale();
-  let sum = 0;
-  let sumSq = 0;
-  const w = clone.bitmap.width;
-  const h = clone.bitmap.height;
-  const total = w * h;
-  for (let y = 0; y < h; y += 2) { // step to speed up
-    for (let x = 0; x < w; x += 2) {
-      const idx = (y * w + x) << 2;
-      const r = clone.bitmap.data[idx]; // grayscale => r==g==b
-      sum += r;
-      sumSq += r * r;
-    }
-  }
-  const n = (Math.ceil(h/2) * Math.ceil(w/2));
-  const mean = sum / n;
-  const variance = sumSq / n - mean * mean;
-
-  // heuristics: variance > threshold => region contains UI content
-  // threshold chosen empirically; adjust if needed.
-  return variance > 60;
-}
-
-// Helper: crop Jimp image using normalized box
-function cropByNormalized(img, box) {
-  const w = img.bitmap.width;
-  const h = img.bitmap.height;
-  const x = Math.max(0, Math.round(box.x * w));
-  const y = Math.max(0, Math.round(box.y * h));
-  const cw = Math.max(1, Math.round(box.w * w));
-  const ch = Math.max(1, Math.round(box.h * h));
-  return img.clone().crop(x, y, cw, ch);
-}
-
-// OCR helper for combat power region
-async function readCombatPowerText(fullImagePath) {
-  try {
-    const img = await Jimp.read(fullImagePath);
-    const crop = cropByNormalized(img, BOXES.combatPower);
-
-    // increase contrast and scale for better OCR
-    crop
-      .greyscale()
-      .contrast(0.4)
-      .normalize()
-      .resize(crop.bitmap.width * 2, crop.bitmap.height * 2, Jimp.RESIZE_BEZIER);
-
-    // write to buffer for Tesseract
-    const buffer = await crop.getBufferAsync(Jimp.MIME_PNG);
-
-    const result = await Tesseract.recognize(buffer, 'eng', {
-      logger: m => { /* optional logs */ }
-    });
-
-    const text = result?.data?.text || "";
-    // try to find numbers; prefer patterns like "Combat Power 12,345" or just big numbers
-    const match = text.match(/combat\s*power\s*[:\s]*([\d,]+)/i) || text.match(/([\d,]{3,})/);
-    if (match) {
-      return match[1].replace(/[^\d]/g, "");
-    }
-    return "";
-  } catch (err) {
-    console.error("OCR error:", err);
-    return "";
-  }
-}
-
-// ---------------------------
 // Upload endpoint
-// ---------------------------
-app.post("/upload", upload.single("image"), async (req, res) => {
+app.post("/upload", upload.single("screenshot"), async (req, res) => {
+  const filePath = req.file.path;
+
   try {
-    const filename = req.file.filename;
-    const relPath = `/uploads/${filename}`;
-    const fullPath = path.join(uploadDir, filename);
+    const image = await Jimp.read(filePath);
+    const { width, height } = image.bitmap;
 
-    // load image with Jimp
-    const img = await Jimp.read(fullPath);
-
-    // crop and analyze regions
-    const invCrop = cropByNormalized(img, BOXES.inventory);
-    const equipCrop = cropByNormalized(img, BOXES.equipped);
-    const cpCrop = cropByNormalized(img, BOXES.combatPower);
-
-    const invVisible = await regionHasContent(invCrop);
-    const equipVisible = await regionHasContent(equipCrop);
-
-    // OCR combat power region (if likely contains digits)
-    let combatText = "";
-    // We attempt OCR always because sometimes CombatPower area looks empty to variance but text exists.
-    combatText = await readCombatPowerText(fullPath);
-
-    // Build detected array (for UI)
-    const detected = [];
-    detected.push({ key: "equippedSlot", visible: !!equipVisible });
-    detected.push({ key: "inventoryPanel", visible: !!invVisible });
-    // combat power label will be added separately if found
-
-    // store detection object (no timestamp per your request)
-    const detection = {
-      id: Date.now(),
-      path: relPath,
-      equippedVisible: !!equipVisible,
-      inventoryVisible: !!invVisible,
-      combatPower: combatText || null,
-      // boxes provided in pixel coordinates (useful for client overlay)
-      boxes: (() => {
-        const w = img.bitmap.width;
-        const h = img.bitmap.height;
-        return {
-          inventory: { x: Math.round(BOXES.inventory.x * w), y: Math.round(BOXES.inventory.y * h), w: Math.round(BOXES.inventory.w * w), h: Math.round(BOXES.inventory.h * h) },
-          equipped: { x: Math.round(BOXES.equipped.x * w), y: Math.round(BOXES.equipped.y * h), w: Math.round(BOXES.equipped.w * w), h: Math.round(BOXES.equipped.h * h) },
-          combatPower: { x: Math.round(BOXES.combatPower.x * w), y: Math.round(BOXES.combatPower.y * h), w: Math.round(BOXES.combatPower.w * w), h: Math.round(BOXES.combatPower.h * h) }
-        };
-      })()
+    // approximate detection boxes (percentage based)
+    const regions = {
+      inventory: { x: width * 0.70, y: height * 0.40, w: width * 0.25, h: height * 0.50 },
+      equipped: { x: width * 0.10, y: height * 0.35, w: width * 0.25, h: height * 0.55 },
+      combatPower: { x: width * 0.40, y: height * 0.80, w: width * 0.25, h: height * 0.15 }
     };
 
-    // save detection
-    const all = JSON.parse(fs.readFileSync(dataFile));
-    all.push(detection);
-    fs.writeFileSync(dataFile, JSON.stringify(all, null, 2));
+    // simple brightness variance check
+    const checkVisible = async (r) => {
+      const cropped = image.clone().crop(r.x, r.y, r.w, r.h);
+      const pixels = [];
+      cropped.scan(0, 0, r.w, r.h, (_, __, idx) => {
+        const avg = (cropped.bitmap.data[idx] + cropped.bitmap.data[idx+1] + cropped.bitmap.data[idx+2]) / 3;
+        pixels.push(avg);
+      });
+      const mean = pixels.reduce((a,b)=>a+b,0)/pixels.length;
+      const variance = pixels.reduce((a,b)=>a+(b-mean)**2,0)/pixels.length;
+      return variance > 100 ? "✅" : "❌";
+    };
 
-    // emit realtime
-    io.emit("new_detection", detection);
+    const inventoryVisible = await checkVisible(regions.inventory);
+    const equippedVisible = await checkVisible(regions.equipped);
 
-    res.json({ success: true, detection });
+    // OCR for combat power
+    const combatCrop = image.clone().crop(regions.combatPower.x, regions.combatPower.y, regions.combatPower.w, regions.combatPower.h);
+    const combatBuffer = await combatCrop.getBufferAsync(Jimp.MIME_PNG);
+    const ocr = await Tesseract.recognize(combatBuffer, "eng");
+    const combatPowerText = (ocr.data.text.match(/combat power\s*\d+/i) || [""])[0].trim();
+
+    const record = {
+      id: Date.now(),
+      filename: req.file.filename,
+      inventory: inventoryVisible,
+      equipped: equippedVisible,
+      combatPower: combatPowerText || "❌ Not detected"
+    };
+
+    detections.unshift(record);
+    saveData();
+    io.emit("update", record);
+
+    res.json({ success: true, record });
   } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error("Detection error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-app.get("/detections", (req, res) => {
-  const all = JSON.parse(fs.readFileSync(dataFile));
-  res.json(all);
+app.get("/data", (req, res) => res.json(detections));
+
+io.on("connection", (socket) => {
+  socket.emit("init", detections);
 });
 
-// start server
-httpServer.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
