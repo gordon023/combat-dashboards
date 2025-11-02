@@ -1,49 +1,58 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Game UI Detector</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
-      rel="stylesheet"
-    />
-  </head>
-  <body class="bg-gray-100 text-gray-800">
-    <div class="max-w-4xl mx-auto p-6">
-      <h1 class="text-2xl font-bold mb-4 text-center">🎮 Game UI Detector</h1>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game UI Detector</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white p-6">
+  <h1 class="text-3xl font-bold mb-4 text-center">Game UI Detector</h1>
 
-      <form id="uploadForm" class="mb-6">
-        <input
-          type="file"
-          name="image"
-          id="imageInput"
-          accept="image/*"
-          class="border p-2 rounded"
-        />
-        <button
-          type="submit"
-          class="bg-blue-500 text-white px-4 py-2 rounded ml-2"
-        >
-          Upload
-        </button>
-      </form>
+  <form id="uploadForm" class="flex flex-col items-center space-y-3">
+    <input type="file" name="screenshot" id="screenshot" accept="image/*" required class="text-gray-300" />
+    <button type="submit" class="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600">Upload Screenshot</button>
+  </form>
 
-      <table
-        class="min-w-full border border-gray-300 bg-white shadow-md rounded-lg"
-      >
-        <thead>
-          <tr class="bg-gray-200 text-left">
-            <th class="p-3 border">Screenshot</th>
-            <th class="p-3 border">Equipped Slot</th>
-            <th class="p-3 border">Inventory Slot</th>
-            <th class="p-3 border">Combat Power</th>
-          </tr>
-        </thead>
-        <tbody id="resultTable"></tbody>
-      </table>
-    </div>
+  <div id="tableContainer" class="mt-8">
+    <table class="min-w-full bg-gray-800 rounded-lg overflow-hidden">
+      <thead>
+        <tr class="bg-gray-700 text-left">
+          <th class="px-4 py-2">Image</th>
+          <th class="px-4 py-2">Inventory</th>
+          <th class="px-4 py-2">Equipped</th>
+          <th class="px-4 py-2">Combat Power</th>
+        </tr>
+      </thead>
+      <tbody id="resultTable"></tbody>
+    </table>
+  </div>
 
-    <script src="script.js"></script>
-  </body>
+  <script>
+    async function loadTable() {
+      const res = await fetch("/data");
+      const data = await res.json();
+      const tbody = document.getElementById("resultTable");
+      tbody.innerHTML = data.map(item => `
+        <tr class="border-t border-gray-700">
+          <td class="px-4 py-2"><img src="${item.image}" class="w-40 rounded"></td>
+          <td class="px-4 py-2">${item.inventoryVisible ? "✅" : "❌"}</td>
+          <td class="px-4 py-2">${item.equippedVisible ? "✅" : "❌"}</td>
+          <td class="px-4 py-2">${item.combatPower}</td>
+        </tr>
+      `).join("");
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      console.log("Uploaded:", result);
+      loadTable();
+    });
+
+    loadTable();
+  </script>
+</body>
 </html>
