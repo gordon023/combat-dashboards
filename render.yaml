@@ -1,13 +1,9 @@
 services:
   - type: web
-    name: smart-ui-analyzer
+    name: boss-detector
     env: node
     plan: free
-    buildCommand: "npm install"
-    startCommand: "npm start"
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
-      - key: NODE_ENV
-        value: production
-    disk:
-      name: persistent-data
-      mountPath: /opt/render/project
+      NODE_ENV: production
