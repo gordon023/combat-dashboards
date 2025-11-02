@@ -1,9 +1,9 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import multer from "multer";
 import fs from "fs";
 import path from "path";
-import multer from "multer";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,17 +16,20 @@ const io = new Server(server);
 app.use(express.static("public"));
 app.use(express.json());
 
-const upload = multer({ dest: "public/uploads/" });
+const uploadPath = path.join(__dirname, "public", "uploads");
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
 
-const DATA_FILE = "detections.json";
+// persistent data path
+const DATA_FILE = process.env.DATA_FILE || "/data/detections.json";
+if (!fs.existsSync("/data")) fs.mkdirSync("/data", { recursive: true });
+if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, "[]");
 
-// Load previous detections
-let detections = [];
-if (fs.existsSync(DATA_FILE)) {
-  detections = JSON.parse(fs.readFileSync(DATA_FILE));
-}
+let detections = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
 
-// --- Upload handler ---
+// file upload config
+const upload = multer({ dest: uploadPath });
+
+// upload handler
 app.post("/upload", upload.single("image"), (req, res) => {
   const newDetection = {
     id: Date.now(),
@@ -46,7 +49,7 @@ app.post("/upload", upload.single("image"), (req, res) => {
   res.json({ success: true, detection: newDetection });
 });
 
-// --- Get all detections ---
+// fetch all detections
 app.get("/detections", (req, res) => {
   res.json(detections);
 });
@@ -55,4 +58,5 @@ io.on("connection", (socket) => {
   console.log("🟢 Client connected");
 });
 
-server.listen(3000, () => console.log("✅ Server running at http://localhost:3000"));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
