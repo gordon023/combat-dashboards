@@ -3,28 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Game UI Detector</title>
+  <title>Game UI Detector - Real-time</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <style>
-    body { background: #0f172a; color: #f8fafc; }
+    body { background-color: #0f172a; color: #f8fafc; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: center; }
     img.thumb { width: 120px; height: auto; border-radius: 8px; }
-    #status { font-size: 0.9rem; color: #22c55e; }
   </style>
 </head>
 <body class="flex flex-col items-center p-6">
-
-  <h1 class="text-3xl font-bold mb-4">🎮 Game UI Detector (Server OCR)</h1>
+  <h1 class="text-3xl font-bold mb-4">🎮 Game UI Detector (Live)</h1>
 
   <form id="uploadForm" class="bg-slate-800 p-4 rounded-xl flex flex-col items-center w-full max-w-md">
     <input id="imageInput" type="file" name="image" accept="image/*" required class="mb-3" />
     <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-white font-semibold">Upload & Analyze</button>
-    <p id="status" class="mt-3"></p>
+    <p id="status" class="mt-3 text-sm text-green-400"></p>
   </form>
 
   <div class="mt-8 w-full max-w-4xl">
-    <h2 class="text-2xl mb-3">📋 Detection Results</h2>
+    <h2 class="text-2xl mb-3">📋 Detected Images</h2>
     <table class="bg-slate-800 rounded-xl overflow-hidden">
       <thead class="bg-slate-700">
         <tr>
@@ -39,55 +38,45 @@
   </div>
 
   <script>
+    const socket = io();
     const uploadForm = document.getElementById("uploadForm");
     const imageInput = document.getElementById("imageInput");
-    const resultsTable = document.getElementById("results");
+    const results = document.getElementById("results");
     const statusEl = document.getElementById("status");
 
-    async function fetchData() {
-      const res = await fetch("/data");
-      const data = await res.json();
-      resultsTable.innerHTML = data.reverse().map(item => `
-        <tr>
-          <td><img src="${item.file}" class="thumb"></td>
-          <td>${item.equipped}</td>
-          <td>${item.inventory}</td>
-          <td>${item.combatPower}</td>
-        </tr>
-      `).join("");
-    }
+    const addRow = (item) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><img src="${item.file}" class="thumb"></td>
+        <td>${item.equipped}</td>
+        <td>${item.inventory}</td>
+        <td>${item.combatPower}</td>
+      `;
+      results.prepend(row);
+    };
+
+    socket.on("initial_data", (data) => {
+      results.innerHTML = "";
+      data.forEach(addRow);
+    });
+
+    socket.on("new_detection", addRow);
 
     uploadForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const file = imageInput.files[0];
-      if (!file) return alert("Please select an image first.");
+      if (!file) return alert("Select an image first!");
 
-      statusEl.textContent = "⏳ Uploading & Analyzing...";
       const formData = new FormData();
       formData.append("image", file);
 
-      try {
-        const res = await fetch("/upload", {
-          method: "POST",
-          body: formData
-        });
-        const data = await res.json();
-        if (data.success) {
-          statusEl.textContent = "✅ Detection Complete!";
-          fetchData();
-        } else {
-          statusEl.textContent = "❌ Failed to analyze image.";
-        }
-      } catch (err) {
-        console.error(err);
-        statusEl.textContent = "❌ Upload failed.";
-      }
+      statusEl.textContent = "⏳ Uploading & analyzing...";
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (data.success) statusEl.textContent = "✅ Detection complete!";
+      else statusEl.textContent = "❌ Detection failed.";
     });
-
-    // Load initial data every 10s
-    fetchData();
-    setInterval(fetchData, 10000);
   </script>
-
 </body>
 </html>
