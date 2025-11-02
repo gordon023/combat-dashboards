@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>🎮 Game Screenshot Detector (Local Test)</title>
+
+    <!-- Tailwind CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- Socket.io -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  </head>
+
+  <body class="bg-gray-900 text-white flex flex-col items-center min-h-screen p-6">
+    <h1 class="text-3xl font-bold mb-6">🎮 Game Screenshot Detector (Local Test)</h1>
+
+    <!-- Upload form -->
+    <form id="uploadForm" class="flex flex-col items-center mb-8 w-full max-w-md">
+      <input
+        type="file"
+        id="imageInput"
+        name="image"
+        accept="image/*"
+        required
+        class="w-full mb-4 p-2 bg-gray-800 text-white border border-gray-700 rounded"
+      />
+      <button
+        type="submit"
+        class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700 transition-all"
+      >
+        Upload Screenshot
+      </button>
+    </form>
+
+    <!-- Detections list -->
+    <div
+      id="detectionsContainer"
+      class="w-full max-w-4xl space-y-6 flex flex-col items-center"
+    ></div>
+
+    <script>
+      // Initialize socket
+      const socket = io();
+      const detectionsContainer = document.getElementById("detectionsContainer");
+
+      // Function to render each detection
+      function renderDetection(d) {
+        const imgUrl = `/uploads/${d.filename}`;
+        const box = document.createElement("div");
+        box.className =
+          "bg-gray-800 rounded-xl shadow-lg p-4 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6 border border-gray-700 w-full";
+
+        box.innerHTML = `
+          <img src="${imgUrl}" class="w-64 h-40 object-cover rounded-lg border border-gray-600">
+          <div class="flex flex-col items-start">
+            <p class="font-bold text-lg mb-2">🆔 ID: ${d.id}</p>
+            <p class="text-gray-300 mb-2"><b>Detected Elements:</b></p>
+            <ul class="list-disc ml-6 space-y-1 text-green-400">
+              <li>${d.detected.inventory ? "✅ Inventory Panel" : "❌ Inventory Panel"}</li>
+              <li>${d.detected.equipped ? "✅ Equipped Item Slots" : "❌ Equipped Item Slots"}</li>
+              <li>${d.detected.combatPower ? "✅ Combat Power" : "❌ Combat Power"}</li>
+            </ul>
+            <p class="text-sm text-gray-400 mt-3">
+              ⏰ ${new Date(d.timestamp).toLocaleString()}
+            </p>
+          </div>
+        `;
+        detectionsContainer.prepend(box);
+      }
+
+      // Load existing detections on page load
+      fetch("/detections")
+        .then((r) => r.json())
+        .then((data) => {
+          data.forEach(renderDetection);
+        });
+
+      // Listen for realtime updates
+      socket.on("newDetection", renderDetection);
+
+      // Handle upload form
+      document
+        .getElementById("uploadForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const formData = new FormData(e.target);
+          const res = await fetch("/upload", { method: "POST", body: formData });
+          const json = await res.json();
+          if (json.success) {
+            alert("✅ Screenshot uploaded successfully!");
+            e.target.reset();
+          } else {
+            alert("❌ Upload failed!");
+          }
+        });
+    </script>
+  </body>
+</html>
