@@ -3,150 +3,58 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Game UI Detector</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <title>Fast Image Detector</title>
   <script src="/socket.io/socket.io.js"></script>
-  <style>
-    .detection-wrap { display: flex; gap: 16px; align-items: flex-start; }
-    .labels { display:flex; flex-direction:column; gap:12px; min-width:200px; }
-    .label-item { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-radius:8px; background:#111827; border:1px solid #2d3748; }
-    .check { color: #34d399; font-weight:700; }
-    .cross { color: #f87171; font-weight:700; }
-    .combat-val { color:#fef3c7; font-weight:700; }
-    .img-box { position: relative; display:inline-block; }
-    .overlay-canvas { position:absolute; top:0; left:0; pointer-events:none; }
-  </style>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-6 flex flex-col items-center">
-  <h1 class="text-2xl font-bold mb-4">🎮 Game UI Detector</h1>
+<body class="bg-gray-900 text-white flex flex-col items-center p-6">
+  <h1 class="text-2xl font-bold mb-4">🖼️ Fast Image Detector</h1>
 
-  <form id="uploadForm" class="mb-6 flex gap-2">
-    <input type="file" name="image" id="image" accept="image/*" class="bg-gray-800 p-2 rounded">
-    <button class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Upload</button>
+  <form id="uploadForm" class="mb-6 flex flex-col items-center">
+    <input type="file" name="screenshot" accept="image/*" required class="mb-3">
+    <button type="submit" class="bg-green-600 px-4 py-2 rounded">Upload Screenshot</button>
   </form>
 
-  <div id="status" class="mb-4 text-sm text-green-400"></div>
+  <table class="table-auto w-full max-w-3xl border border-gray-700 text-center">
+    <thead>
+      <tr class="bg-gray-800">
+        <th class="p-2 border">Image</th>
+        <th class="p-2 border">Inventory</th>
+        <th class="p-2 border">Equipped</th>
+        <th class="p-2 border">Combat Power</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
 
-  <div id="resultsList" class="w-full max-w-5xl space-y-6"></div>
+  <script>
+    const socket = io();
 
-<script>
-  const socket = io();
-  const uploadForm = document.getElementById('uploadForm');
-  const status = document.getElementById('status');
-  const resultsList = document.getElementById('resultsList');
+    const renderRow = (r) => `
+      <tr class="border-b border-gray-700">
+        <td class="p-2"><img src="/uploads/${r.filename}" class="h-20 mx-auto rounded"></td>
+        <td class="p-2">${r.inventory}</td>
+        <td class="p-2">${r.equipped}</td>
+        <td class="p-2">${r.combatPower}</td>
+      </tr>
+    `;
 
-  uploadForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(uploadForm);
-    status.textContent = 'Uploading...';
-    try {
-      const res = await fetch('/upload', { method: 'POST', body: fd });
-      const json = await res.json();
-      if (json.success && json.detection) {
-        status.textContent = 'Uploaded';
-        addResult(json.detection);
-      } else {
-        status.textContent = 'Upload failed';
-      }
-    } catch (err) {
-      console.error(err);
-      status.textContent = 'Upload failed';
-    }
-  });
-
-  function createLabelRow(title, isVisible, extraText) {
-    const el = document.createElement('div');
-    el.className = 'label-item';
-    el.innerHTML = `<div>${title}</div><div>${isVisible ? `<span class="check">✔</span>` : `<span class="cross">✖</span>`}${extraText ? '&nbsp;&nbsp;<span class="combat-val">'+extraText+'</span>' : ''}</div>`;
-    return el;
-  }
-
-  function addResult(det) {
-    // container
-    const wrap = document.createElement('div');
-    wrap.className = 'detection-wrap bg-gray-800 p-4 rounded-lg border border-gray-700';
-
-    // left: image with overlay canvas
-    const imgCol = document.createElement('div');
-    imgCol.className = 'img-col';
-
-    const imgBox = document.createElement('div');
-    imgBox.className = 'img-box';
-
-    const img = document.createElement('img');
-    img.src = det.path;
-    img.style.maxWidth = '900px';
-    img.style.maxHeight = '600px';
-    img.style.borderRadius = '8px';
-    img.style.display = 'block';
-    imgBox.appendChild(img);
-
-    const canvas = document.createElement('canvas');
-    canvas.className = 'overlay-canvas';
-    imgBox.appendChild(canvas);
-    imgCol.appendChild(imgBox);
-
-    // right: vertical labels (equipped, inventory, combat power)
-    const labelCol = document.createElement('div');
-    labelCol.className = 'labels';
-
-    const equippedRow = createLabelRow('Equipped Slots', det.equippedVisible);
-    const inventoryRow = createLabelRow('Inventory Panel', det.inventoryVisible);
-    const combatText = det.combatPower ? det.combatPower : '—';
-    const combatRow = createLabelRow('Combat Power', !!det.combatPower, det.combatPower ? det.combatPower : '');
-
-    labelCol.appendChild(equippedRow);
-    labelCol.appendChild(inventoryRow);
-    labelCol.appendChild(combatRow);
-
-    wrap.appendChild(imgCol);
-    wrap.appendChild(labelCol);
-
-    resultsList.prepend(wrap);
-
-    // draw boxes when image loads
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      canvas.style.width = img.width + 'px';
-      canvas.style.height = img.height + 'px';
-
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-
-      // boxes: inventory, equipped, combatPower
-      const boxes = det.boxes || {};
-      // draw a green rectangle for each box with labels
-      function drawBox(b, label) {
-        if (!b) return;
-        // boxes are in pixel coords already
-        ctx.strokeStyle = 'lime';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(b.x, b.y, b.w, b.h);
-        ctx.fillStyle = 'rgba(0,255,0,0.15)';
-        ctx.fillRect(b.x, b.y, b.w, b.h);
-        ctx.font = '14px sans-serif';
-        ctx.fillStyle = '#fff';
-        ctx.fillText(label, b.x + 6, b.y + 18);
-      }
-
-      drawBox(boxes.inventory, 'Inventory');
-      drawBox(boxes.equipped, 'Equipped');
-      drawBox(boxes.combatPower, 'Combat Power');
-    };
-  }
-
-  // load existing detections
-  fetch('/detections')
-    .then(r => r.json())
-    .then(list => {
-      list.forEach(addResult);
+    socket.on("init", (data) => {
+      const tbody = document.getElementById("tableBody");
+      tbody.innerHTML = data.map(renderRow).join("");
     });
 
-  // realtime updates
-  socket.on('new_detection', (det) => {
-    addResult(det);
-  });
-</script>
+    socket.on("update", (r) => {
+      document.getElementById("tableBody").insertAdjacentHTML("afterbegin", renderRow(r));
+    });
+
+    document.getElementById("uploadForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      if (result.success) e.target.reset();
+    });
+  </script>
 </body>
 </html>
