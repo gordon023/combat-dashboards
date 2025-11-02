@@ -1,52 +1,49 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Boss UI Detector</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-900 text-white min-h-screen p-6">
-  <div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold mb-4">🎮 Smart UI Detector</h1>
-    <form id="uploadForm" class="flex gap-2 mb-6">
-      <input type="file" id="image" name="image" accept="image/*" class="text-white" required />
-      <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Upload Screenshot</button>
-    </form>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Game UI Detector</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-gray-100 text-gray-800">
+    <div class="max-w-4xl mx-auto p-6">
+      <h1 class="text-2xl font-bold mb-4 text-center">🎮 Game UI Detector</h1>
 
-    <div id="results" class="space-y-4"></div>
-  </div>
+      <form id="uploadForm" class="mb-6">
+        <input
+          type="file"
+          name="image"
+          id="imageInput"
+          accept="image/*"
+          class="border p-2 rounded"
+        />
+        <button
+          type="submit"
+          class="bg-blue-500 text-white px-4 py-2 rounded ml-2"
+        >
+          Upload
+        </button>
+      </form>
 
-  <script>
-    const form = document.getElementById("uploadForm");
-    const results = document.getElementById("results");
+      <table
+        class="min-w-full border border-gray-300 bg-white shadow-md rounded-lg"
+      >
+        <thead>
+          <tr class="bg-gray-200 text-left">
+            <th class="p-3 border">Screenshot</th>
+            <th class="p-3 border">Equipped Slot</th>
+            <th class="p-3 border">Inventory Slot</th>
+            <th class="p-3 border">Combat Power</th>
+          </tr>
+        </thead>
+        <tbody id="resultTable"></tbody>
+      </table>
+    </div>
 
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const file = document.getElementById("image").files[0];
-      if (!file) return;
-
-      const fd = new FormData();
-      fd.append("image", file);
-
-      const res = await fetch("/upload", { method: "POST", body: fd });
-      const data = await res.json();
-
-      const div = document.createElement("div");
-      div.className = "bg-gray-800 p-4 rounded-lg shadow-lg";
-      div.innerHTML = `
-        <div class="flex flex-col sm:flex-row gap-4">
-          <img src="${data.image}" class="sm:w-1/2 rounded-lg border border-gray-700">
-          <div class="space-y-1 text-sm sm:text-base">
-            <p><b>Equipped Slots:</b> ${data.equippedSlots}</p>
-            <p><b>Inventory Slots:</b> ${data.inventorySlots}</p>
-            <p><b>Combat Power:</b> ${data.combatPower}</p>
-            <p class="text-gray-400 text-xs">${new Date(data.timestamp).toLocaleString()}</p>
-          </div>
-        </div>
-      `;
-      results.prepend(div);
-    });
-  </script>
-</body>
+    <script src="script.js"></script>
+  </body>
 </html>
