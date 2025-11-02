@@ -1,83 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Game UI Detector - Realtime</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Boss Inventory Detector</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <style>
-    body { background-color: #0f172a; color: #f8fafc; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: center; }
-    img.thumb { width: 120px; height: auto; border-radius: 8px; }
-    .detected { color: #22c55e; font-weight: bold; }
-    .missing { color: #ef4444; }
-  </style>
 </head>
-<body class="flex flex-col items-center p-6">
-  <h1 class="text-3xl font-bold mb-6">🎮 Game UI Detector (Realtime)</h1>
+<body class="bg-gray-900 text-white p-6">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4">🧠 Boss Detector</h1>
+    <form id="uploadForm" class="flex gap-2 mb-6">
+      <input type="file" id="image" name="image" accept="image/*" class="text-white" required />
+      <button type="submit" class="bg-blue-600 px-4 py-2 rounded">Upload & Detect</button>
+    </form>
 
-  <form id="uploadForm" class="bg-slate-800 p-4 rounded-xl flex flex-col items-center w-full max-w-md">
-    <input id="imageInput" type="file" name="image" accept="image/*" required class="mb-3" />
-    <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-white font-semibold">Upload & Analyze</button>
-    <p id="status" class="mt-3 text-sm text-green-400"></p>
-  </form>
-
-  <div class="mt-8 w-full max-w-5xl">
-    <h2 class="text-2xl mb-3">📋 Detection Results</h2>
-    <table class="bg-slate-800 rounded-xl overflow-hidden">
-      <thead class="bg-slate-700">
-        <tr>
-          <th>Image</th>
-          <th>Equipped Slot</th>
-          <th>Inventory Slot</th>
-          <th>Combat Power</th>
-        </tr>
-      </thead>
-      <tbody id="results"></tbody>
-    </table>
+    <div id="results" class="space-y-4"></div>
   </div>
 
   <script>
-    const socket = io();
-    const uploadForm = document.getElementById("uploadForm");
-    const imageInput = document.getElementById("imageInput");
+    const form = document.getElementById("uploadForm");
     const results = document.getElementById("results");
-    const statusEl = document.getElementById("status");
 
-    const addRow = (item) => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td><img src="${item.file}" class="thumb"></td>
-        <td class="${item.equipped === '✅' ? 'detected' : 'missing'}">${item.equipped}</td>
-        <td class="${item.inventory === '✅' ? 'detected' : 'missing'}">${item.inventory}</td>
-        <td class="detected">${item.combatPower}</td>
-      `;
-      results.prepend(row);
-    };
-
-    socket.on("initial_data", (data) => {
-      results.innerHTML = "";
-      data.forEach(addRow);
-    });
-
-    socket.on("new_detection", addRow);
-
-    uploadForm.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", async e => {
       e.preventDefault();
-      const file = imageInput.files[0];
-      if (!file) return alert("Select an image first!");
+      const file = document.getElementById("image").files[0];
+      const fd = new FormData();
+      fd.append("image", file);
 
-      const formData = new FormData();
-      formData.append("image", file);
-
-      statusEl.textContent = "⏳ Uploading & analyzing...";
-      const res = await fetch("/upload", { method: "POST", body: formData });
+      const res = await fetch("/upload", { method: "POST", body: fd });
       const data = await res.json();
 
-      if (data.success) statusEl.textContent = "✅ Detection complete!";
-      else statusEl.textContent = "❌ Detection failed.";
+      const div = document.createElement("div");
+      div.className = "bg-gray-800 p-4 rounded-lg shadow-lg";
+      div.innerHTML = `
+        <div class="flex items-center space-x-4">
+          <img src="${data.image}" class="w-1/2 rounded-lg border border-gray-700">
+          <div>
+            <p><b>Equipped Slots:</b> ${data.equippedCount}</p>
+            <p><b>Inventory Slots:</b> ${data.inventoryCount}</p>
+            <p><b>Combat Power:</b> ${data.combatPowerDetected ? "✅ Detected" : "❌ Not found"}</p>
+            <p><small>${new Date(data.timestamp).toLocaleString()}</small></p>
+          </div>
+        </div>
+      `;
+      results.prepend(div);
     });
   </script>
 </body>
