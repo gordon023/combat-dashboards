@@ -1,15 +1,12 @@
 {
   "name": "game-ui-detector",
   "version": "1.0.0",
-  "description": "Realtime game UI detector using Express, OpenCV, and Tesseract.js",
+  "description": "Realtime game UI detector using Express and Tesseract.js (fast version)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "npx opencv-build-npm"
+    "start": "node server.js"
   },
   "dependencies": {
-    "@u4/opencv-build": "^0.1.1",
-    "@u4/opencv4nodejs": "^7.2.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "fs-extra": "^11.2.0",
