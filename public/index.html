@@ -58,32 +58,42 @@
 
     // Render new detection rows
     function addDetectionRow(det) {
-      const row = document.createElement('tr');
-      row.innerHTML = `
-        <td class="py-2 px-4">
-          <img src="${det.path}" alt="screenshot" class="w-32 h-32 object-cover rounded-lg">
-        </td>
-        <td class="py-2 px-4">
-          <ul class="list-disc list-inside text-green-300">
-            ${det.detected.join('<br>')}
-          </ul>
-        </td>
-        <td class="py-2 px-4">${new Date(det.timestamp).toLocaleString()}</td>
-      `;
-      detectionTable.prepend(row);
-    }
+  const row = document.createElement('tr');
+  row.innerHTML = `
+    <td class="py-2 px-4 relative">
+      <div class="relative inline-block">
+        <img src="${det.path}" alt="screenshot" class="w-64 h-64 object-cover rounded-lg border border-gray-700">
+        <canvas class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+      </div>
+    </td>
+    <td class="py-2 px-4">
+      <ul class="list-disc list-inside text-green-300">
+        ${det.detected.map(d => `<li>${d}</li>`).join("")}
+      </ul>
+    </td>
+    <td class="py-2 px-4">${new Date(det.timestamp).toLocaleString()}</td>
+  `;
+  detectionTable.prepend(row);
 
-    // Load past detections
-    fetch('/detections')
-      .then(res => res.json())
-      .then(data => {
-        data.forEach(addDetectionRow);
-      });
+  const canvas = row.querySelector("canvas");
+  const ctx = canvas.getContext("2d");
+  const img = row.querySelector("img");
+  img.onload = () => {
+    const scaleX = canvas.width / img.naturalWidth;
+    const scaleY = canvas.height / img.naturalHeight;
 
-    // Listen for real-time updates
-    socket.on('newDetection', (det) => {
-      addDetectionRow(det);
+    det.boxes.forEach(b => {
+      ctx.strokeStyle = "lime";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(b.x * scaleX, b.y * scaleY, b.w * scaleX, b.h * scaleY);
+      ctx.fillStyle = "rgba(0,255,0,0.4)";
+      ctx.fillRect(b.x * scaleX, b.y * scaleY, b.w * scaleX, b.h * scaleY);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(b.label, b.x * scaleX + 5, b.y * scaleY + 15);
     });
+  };
+}
+
   </script>
 
 </body>
